@@ -1,0 +1,37 @@
+{
+    "name": "ctsoftwarellc/laravel-mail-throttle",
+    "description": "Distributed rate limiting for Laravel mail across multiple queue workers",
+    "keywords": ["laravel", "mail", "throttle", "rate-limit", "queue", "redis"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "CT Software LLC",
+            "email": "support@ctsoftwarellc.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^10.0|^11.0|^12.0",
+        "illuminate/mail": "^10.0|^11.0|^12.0",
+        "illuminate/notifications": "^10.0|^11.0|^12.0",
+        "illuminate/redis": "^10.0|^11.0|^12.0",
+        "illuminate/support": "^10.0|^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ctsoftwarellc\\MailThrottle\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Ctsoftwarellc\\MailThrottle\\MailThrottleServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
