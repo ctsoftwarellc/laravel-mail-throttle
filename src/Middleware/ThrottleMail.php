@@ -69,7 +69,6 @@ class ThrottleMail
         try {
             $rate = $this->maxAttempts ?? (int) $config['rate_limit'];
             $perSeconds = $this->perSeconds ?? (int) ($config['rate_limit_per'] ?? 1);
-            $releaseDelay = $this->calculateReleaseDelay($perSeconds);
 
             Redis::throttle($this->throttleKey($mailer))
                 ->allow($rate)
@@ -77,8 +76,9 @@ class ThrottleMail
                 ->block(0)
                 ->then(
                     fn () => $next($job),
-                    function () use ($job, $releaseDelay): void {
-                        $job->release($releaseDelay);
+                    function () use ($job, $rate, $perSeconds): void {
+                        $delay = $this->calculateReleaseDelay($job, $rate, $perSeconds);
+                        $job->release($delay);
                     }
                 );
 
@@ -136,14 +136,39 @@ class ThrottleMail
     }
 
     /**
-     * Calculate release delay - use configured delay, not full rate window.
+     * Calculate release delay with dynamic backoff and jitter.
+     *
+     * Uses exponential backoff based on attempt count (capped) plus random
+     * jitter to prevent thundering herd when many workers release at once.
      */
-    protected function calculateReleaseDelay(int $perSeconds): int
+    protected function calculateReleaseDelay(object $job, int $rate, int $perSeconds): int
     {
-        $configuredDelay = (int) config('mail-throttle.release_delay', 1);
+        // Base delay: time for one slot to become available
+        // e.g., 2 emails/sec = 500ms per slot = 1 second base
+        $baseDelay = max(1, (int) ceil($perSeconds / $rate));
 
-        // Don't release for longer than the rate window
-        return min($configuredDelay, $perSeconds);
+        // Get attempt count for backoff (if available)
+        $attempts = method_exists($job, 'attempts') ? $job->attempts() : 1;
+
+        // Exponential backoff: 1x, 2x, 4x, 8x... capped at configured max
+        $maxMultiplier = (int) config('mail-throttle.max_backoff_multiplier', 8);
+        $multiplier = min($maxMultiplier, pow(2, $attempts - 1));
+
+        // Apply backoff
+        $delay = $baseDelay * $multiplier;
+
+        // Cap at configured maximum delay
+        $maxDelay = (int) config('mail-throttle.max_release_delay', 30);
+        $delay = min($delay, $maxDelay);
+
+        // Add jitter: random 0-50% of delay to spread out retries
+        $jitterPercent = (float) config('mail-throttle.jitter_percent', 0.5);
+        if ($jitterPercent > 0) {
+            $jitter = (int) round($delay * $jitterPercent * (mt_rand(0, 1000) / 1000));
+            $delay += $jitter;
+        }
+
+        return max(1, $delay);
     }
 
     /**

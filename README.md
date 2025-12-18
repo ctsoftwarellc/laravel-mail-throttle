@@ -18,6 +18,7 @@ This package provides:
 - **Distributed throttling** via Redis - works across multiple Horizon workers
 - **Opt-in per class** - add a trait to enable throttling
 - **Config in mail.php** - rate limits live with your mailer config
+- **Dynamic backoff with jitter** - prevents thundering herd at scale
 - **Fail-safe** - configurable behavior when Redis is unavailable
 
 ## Requirements
@@ -174,11 +175,22 @@ public function middleware(): array
    +---------------+               +---------------+
    | Under limit   |               | At limit      |
    | -> Send email |               | -> Release    |
-   +---------------+               |    (retry 1s) |
+   +---------------+               |    w/ backoff |
+                                   |    + jitter   |
                                    +---------------+
 ```
 
 All workers share the same Redis key per mailer, so the rate limit is global across your entire application.
+
+### Dynamic Backoff & Jitter
+
+When a job is throttled, the release delay is calculated dynamically:
+
+1. **Base delay**: Calculated from your rate limit (e.g., 2/sec = 500ms base)
+2. **Exponential backoff**: Increases with retry attempts (1x, 2x, 4x, 8x...)
+3. **Random jitter**: 0-50% random addition to spread out retries
+
+This prevents **thundering herd** issues when scaling to 10-50+ workers, where all workers would otherwise wake up simultaneously and compete for the same rate limit slots.
 
 ## Package Config
 
@@ -186,8 +198,14 @@ Publish with `php artisan vendor:publish --tag=mail-throttle-config`
 
 ```php
 return [
-    // Seconds to wait before retrying a throttled job
-    'release_delay' => env('MAIL_THROTTLE_RELEASE_DELAY', 1),
+    // Maximum delay before retrying (caps exponential backoff)
+    'max_release_delay' => env('MAIL_THROTTLE_MAX_RELEASE_DELAY', 30),
+
+    // Cap for backoff multiplier (1x, 2x, 4x, 8x max by default)
+    'max_backoff_multiplier' => env('MAIL_THROTTLE_MAX_BACKOFF', 8),
+
+    // Random jitter (0.5 = add 0-50% to each delay)
+    'jitter_percent' => env('MAIL_THROTTLE_JITTER', 0.5),
 
     // Send emails anyway if Redis is unavailable?
     'fail_open' => env('MAIL_THROTTLE_FAIL_OPEN', true),
@@ -195,6 +213,28 @@ return [
     // Redis key prefix (defaults to cache.prefix or app.name)
     'key_prefix' => env('MAIL_THROTTLE_KEY_PREFIX'),
 ];
+```
+
+### Tuning for High Scale
+
+For deployments with many workers (10-50+):
+
+```env
+# Increase max delay to reduce Redis contention
+MAIL_THROTTLE_MAX_RELEASE_DELAY=60
+
+# Higher jitter for better distribution
+MAIL_THROTTLE_JITTER=0.75
+```
+
+For low-latency requirements:
+
+```env
+# Lower max delay for faster throughput
+MAIL_THROTTLE_MAX_RELEASE_DELAY=10
+
+# Lower backoff cap
+MAIL_THROTTLE_MAX_BACKOFF=4
 ```
 
 ## Multi-Channel Notifications

@@ -3,15 +3,42 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Release Delay
+    | Maximum Release Delay
     |--------------------------------------------------------------------------
     |
-    | When a job is throttled, it will be released back to the queue after
-    | this many seconds. This should be short to maintain throughput.
-    | The delay will never exceed the rate limit window (rate_limit_per).
+    | The maximum delay (in seconds) before a throttled job is retried.
+    | This caps the exponential backoff to prevent excessively long waits.
     |
     */
-    'release_delay' => (int) env('MAIL_THROTTLE_RELEASE_DELAY', 1),
+    'max_release_delay' => (int) env('MAIL_THROTTLE_MAX_RELEASE_DELAY', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Maximum Backoff Multiplier
+    |--------------------------------------------------------------------------
+    |
+    | Cap for exponential backoff multiplier. With default of 8:
+    | Attempt 1: 1x base delay
+    | Attempt 2: 2x base delay
+    | Attempt 3: 4x base delay
+    | Attempt 4+: 8x base delay (capped)
+    |
+    */
+    'max_backoff_multiplier' => (int) env('MAIL_THROTTLE_MAX_BACKOFF', 8),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Jitter Percentage
+    |--------------------------------------------------------------------------
+    |
+    | Random jitter added to release delays (0.0 to 1.0).
+    | Prevents thundering herd when many workers release simultaneously.
+    |
+    | 0.5 = add 0-50% random jitter to each delay
+    | 0.0 = disable jitter (not recommended at scale)
+    |
+    */
+    'jitter_percent' => (float) env('MAIL_THROTTLE_JITTER', 0.5),
 
     /*
     |--------------------------------------------------------------------------

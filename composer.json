@@ -1,5 +1,6 @@
 {
     "name": "ctsoftwarellc/laravel-mail-throttle",
+    "version": "1.1.0",
     "description": "Distributed rate limiting for Laravel mail across multiple queue workers",
     "keywords": ["laravel", "mail", "throttle", "rate-limit", "queue", "redis"],
     "license": "MIT",
