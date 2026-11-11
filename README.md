@@ -155,6 +155,27 @@ public function middleware(): array
 }
 ```
 
+### Custom keys / non-mail jobs
+
+Pass `maxAttempts`, `perSeconds` and a `mailer` key to throttle any queued job, with no `mail.mailers` config needed. The key becomes `<prefix>:mail-throttle:<mailer>`, so a per-tenant key keeps each tenant's limit separate:
+
+```php
+use Ctsoftwarellc\MailThrottle\Middleware\ThrottleMail;
+
+class SendSmsJob implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(public int $companyId) {}
+
+    public function middleware(): array
+    {
+        // 8 texts per second per company
+        return [new ThrottleMail(maxAttempts: 8, perSeconds: 1, mailer: 'quo-sms:'.$this->companyId)];
+    }
+}
+```
+
 ## How It Works
 
 ```

@@ -45,8 +45,8 @@ class ThrottleMail
         $mailer = $this->resolveMailer($job);
         $config = config("mail.mailers.{$mailer}", []);
 
-        // No rate limit configured = pass through (opt-in behavior)
-        if (! $this->hasRateLimit($config)) {
+        // No rate limit configured and no constructor limit = pass through (opt-in behavior)
+        if (! $this->hasRateLimit($config) && $this->maxAttempts === null) {
             $next($job);
 
             return;
