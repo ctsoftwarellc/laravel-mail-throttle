@@ -66,6 +66,8 @@ class ThrottleMail
      */
     protected function tryThrottle(object $job, Closure $next, string $mailer, array $config): bool
     {
+        $ran = false;
+
         try {
             $rate = $this->maxAttempts ?? (int) $config['rate_limit'];
             $perSeconds = $this->perSeconds ?? (int) ($config['rate_limit_per'] ?? 1);
@@ -75,7 +77,11 @@ class ThrottleMail
                 ->every($perSeconds)
                 ->block(0)
                 ->then(
-                    fn () => $next($job),
+                    function () use ($job, $next, &$ran) {
+                        $ran = true;
+
+                        return $next($job);
+                    },
                     function () use ($job, $rate, $perSeconds): void {
                         $delay = $this->calculateReleaseDelay($job, $rate, $perSeconds);
                         $job->release($delay);
@@ -84,7 +90,8 @@ class ThrottleMail
 
             return true;
         } catch (Throwable $e) {
-            if (config('mail-throttle.fail_open', true)) {
+            // The job itself threw: rethrow so it is not run a second time.
+            if (! $ran && config('mail-throttle.fail_open', true)) {
                 Log::warning('Mail throttle Redis error, failing open', [
                     'error' => $e->getMessage(),
                     'mailer' => $mailer,
